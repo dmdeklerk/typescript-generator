@@ -154,7 +154,31 @@ public class ModelCompiler {
             properties.add(0, new TsPropertyModel(bean.getDiscriminantProperty(), discriminantType, settings.declarePropertiesAsReadOnly, null));
         }
 
-        return new TsBeanModel(bean.getOrigin(), TsBeanCategory.Data, isClass, beanIdentifier, typeParameters, parentType, bean.getTaggedUnionClasses(), interfaces, properties, null, null, bean.getComments());
+        final List<TsMethodModel> methods = processMethods(symbolTable, model, bean, "", "");
+        
+        return new TsBeanModel(bean.getOrigin(), TsBeanCategory.Data, isClass, beanIdentifier, typeParameters, parentType, bean.getTaggedUnionClasses(), interfaces, properties, null, methods, bean.getComments());
+    }
+
+    private List<TsMethodModel> processMethods(SymbolTable symbolTable, Model model, BeanModel bean, String prefix, String suffix) {
+        final List<TsMethodModel> methods = new ArrayList<>();
+        for (MethodModel method : bean.getMethods()) {
+//            boolean pulled = false;
+//            final PropertyModel.PullProperties pullProperties = property.getPullProperties();
+//            if (pullProperties != null) {
+//                if (property.getType() instanceof Class<?>) {
+//                    final BeanModel pullBean = model.getBean((Class<?>) property.getType());
+//                    if (pullBean != null) {
+//                        methods.addAll(processProperties(symbolTable, model, pullBean, prefix + pullProperties.prefix, pullProperties.suffix + suffix));
+//                        pulled = true;
+//                    }
+//                }
+//            }
+//            if (!pulled) {
+//                methods.add(processProperty(symbolTable, bean, property, prefix, suffix));
+//            }
+            methods.add(processMethod(symbolTable, bean, method, prefix, suffix));
+        }
+        return methods;
     }
 
     private List<TsPropertyModel> processProperties(SymbolTable symbolTable, Model model, BeanModel bean, String prefix, String suffix) {
@@ -197,6 +221,15 @@ public class ModelCompiler {
             }
         }
         return false;
+    }
+    
+    private TsMethodModel processMethod(SymbolTable symbolTable, BeanModel bean, MethodModel method, String prefix, String suffix) {
+       
+        //return new TsMethodModel(name, returnType, parameters, body, comments);
+        
+        // TODO continue
+        
+        return null;
     }
 
     private TsPropertyModel processProperty(SymbolTable symbolTable, BeanModel bean, PropertyModel property, String prefix, String suffix) {
