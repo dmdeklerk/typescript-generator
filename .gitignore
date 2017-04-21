@@ -21,6 +21,7 @@ nbactions.xml
 **.classpath
 **.project
 **.settings
+bin
 
 # JetBrains IntelliJ
 .idea/
