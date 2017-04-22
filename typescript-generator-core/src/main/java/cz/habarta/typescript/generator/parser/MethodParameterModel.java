@@ -21,5 +21,10 @@ public class MethodParameterModel {
     public Type getType() {
         return type;
     }
+    
+    @Override
+    public String toString() {
+        return "MethodParameterModel{" + "name=" + name + ", type=" + type + "}";
+    }    
 
 }
