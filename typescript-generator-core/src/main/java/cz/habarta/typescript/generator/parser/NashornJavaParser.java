@@ -1,28 +1,21 @@
 package cz.habarta.typescript.generator.parser;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ser.BeanPropertyWriter;
-import com.fasterxml.jackson.databind.ser.BeanSerializer;
-import com.fasterxml.jackson.databind.ser.BeanSerializerFactory;
-import com.fasterxml.jackson.databind.ser.DefaultSerializerProvider;
-
 import cz.habarta.typescript.generator.Settings;
 import cz.habarta.typescript.generator.TypeProcessor;
 
+/* https://wiki.openjdk.java.net/display/Nashorn/Nashorn+Documentation
+ * http://docs.oracle.com/javase/8/docs/technotes/guides/scripting/prog_guide/index.html
+ * https://wiki.openjdk.java.net/display/Nashorn/Nashorn+extensions */
 public class NashornJavaParser extends ModelParser {
     
     private final ObjectMapper objectMapper = new ObjectMapper();    
@@ -31,49 +24,69 @@ public class NashornJavaParser extends ModelParser {
         super(settings, typeProcessor);
         objectMapper.registerModules(ObjectMapper.findModules(settings.classLoader));
     }
-
+    
     @Override
     protected BeanModel parseBean(SourceType<Class<?>> sourceClass) {
         final List<PropertyModel> properties = new ArrayList<>();
-        final List<MethodModel> methodModels = new ArrayList<>();
-
-        final BeanHelper beanHelper = getBeanHelper(sourceClass.type);
-        if (beanHelper != null) {
-            for (BeanPropertyWriter beanPropertyWriter : beanHelper.getProperties()) {
+        final List<MethodModel> methods = new ArrayList<>();
+        
+        for (Field field : sourceClass.type.getDeclaredFields()) {
+            
+            /* only include public fields */
+            if (!Modifier.isPublic(field.getModifiers())) 
+                continue;
                 
-                System.out.println("prop="+beanPropertyWriter);                
-                
-                final Member propertyMember = beanPropertyWriter.getMember().getMember();
-                
-                Type propertyType = getGenericType(propertyMember);
-                boolean optional = false;
-                PropertyModel.PullProperties pullProperties = null;
-                final Member originalMember = beanPropertyWriter.getMember().getMember();
-                
-                properties.add(processTypeAndCreateProperty(beanPropertyWriter.getName(), propertyType, optional, sourceClass.type, originalMember, pullProperties));
+            Type type = field.getGenericType();
+            List<Class<?>> classes = discoverClassesUsedInType(type);
+            for (Class<?> cls : classes) {
+                addBeanToQueue(new SourceType<>(cls, sourceClass.type, field.getName()));
             }
+            properties.add(new PropertyModel(field.getName(), type, false, field, null, null));
         }
-
-        /* Add all method despite them being simple getters or setters */
-        final List<Method> methods = Arrays.asList(sourceClass.type.getMethods());
-        Collections.sort(methods, new Comparator<Method>() {
-            @Override
-            public int compare(Method o1, Method o2) {
-                return o1.getName().compareToIgnoreCase(o2.getName());
+        
+        for (Method method : sourceClass.type.getDeclaredMethods()) {
+            
+            /* only include public methods */            
+            if (!Modifier.isPublic(method.getModifiers())) 
+                continue;
+            
+            /* method is a property getter */
+            PropertyModel propertyGetter = parseGetterMethod(sourceClass.type, method);
+            if (propertyGetter != null) {
+                List<Class<?>> classes = discoverClassesUsedInType(propertyGetter.getType());
+                for (Class<?> cls : classes) {
+                    addBeanToQueue(new SourceType<>(cls, sourceClass.type, propertyGetter.getName()));
+                }
+                properties.add(propertyGetter);   
+                continue;
+            }            
+            
+            /* method is a property setter */
+            PropertyModel propertySetter = parseSetterMethod(sourceClass.type, method);
+            if (propertySetter != null) {
+                List<Class<?>> classes = discoverClassesUsedInType(propertySetter.getType());
+                for (Class<?> cls : classes) {
+                    addBeanToQueue(new SourceType<>(cls, sourceClass.type, propertySetter.getName()));
+                }
+                properties.add(propertySetter);    
+                continue;
+            }  
+            
+            /* plain method */
+            Type returnType = method.getGenericReturnType();
+            List<Class<?>> classes = discoverClassesUsedInType(returnType);
+            for (Class<?> cls : classes) {
+                addBeanToQueue(new SourceType<>(cls, sourceClass.type, method.getName()));
             }
-        });
-        for (Method method : methods) {
-            Type returnType = method.getGenericReturnType();            
-            methodModels.add(processTypeAndParametersAndCreateMethod(method.getName(), returnType, false, sourceClass.type, method));
-        }        
-        
-        /* Create properties for each `Object getValue()` and `void setValue(Object value)` */
-        // TODO        
-        
-        final String discriminantProperty = null;
-        final String discriminantLiteral = null;
-        final List<Class<?>> taggedUnionClasses = null;
-        
+            
+            List<MethodParameterModel> parameters = new ArrayList<>();        
+            for (Parameter parameter : method.getParameters()) {
+                parameters.add(new MethodParameterModel(parameter.getName(), parameter.getParameterizedType()));
+                addBeanToQueue(new SourceType<>(parameter.getType(), sourceClass.type, method.getName()));
+            }
+            methods.add(new MethodModel(sourceClass.type, method.getName(), parameters, returnType, null));            
+        }
+       
         final Type superclass = sourceClass.type.getGenericSuperclass() == Object.class ? null : sourceClass.type.getGenericSuperclass();
         if (superclass != null) {
             addBeanToQueue(new SourceType<>(superclass, sourceClass.type, "<superClass>"));
@@ -82,71 +95,65 @@ public class NashornJavaParser extends ModelParser {
         for (Type aInterface : interfaces) {
             addBeanToQueue(new SourceType<>(aInterface, sourceClass.type, "<interface>"));
         }
-        return new BeanModel(sourceClass.type, superclass, taggedUnionClasses, discriminantProperty, discriminantLiteral, interfaces, properties, methodModels, null);
+        return new BeanModel(sourceClass.type, superclass, null, null, null, interfaces, properties, methods, null);
     }
     
-    private BeanHelper getBeanHelper(Class<?> beanClass) {
-        if (beanClass == null) {
+    private PropertyModel parseSetterMethod(Class<?> clazz, Method method) {
+        String methodName = method.getName();
+        
+        // setters start with 'set'
+        if (!methodName.startsWith("set"))
             return null;
-        }
-        try {
-            final DefaultSerializerProvider.Impl serializerProvider1 = (DefaultSerializerProvider.Impl) objectMapper.getSerializerProvider();
-            final DefaultSerializerProvider.Impl serializerProvider2 = serializerProvider1.createInstance(objectMapper.getSerializationConfig(), objectMapper.getSerializerFactory());
-            final JavaType simpleType = objectMapper.constructType(beanClass);
-            final JsonSerializer<?> jsonSerializer = BeanSerializerFactory.instance.createSerializer(serializerProvider2, simpleType);
-            if (jsonSerializer == null) {
-                return null;
-            }
-            if (jsonSerializer instanceof BeanSerializer) {
-                return new BeanHelper((BeanSerializer) jsonSerializer);
-            } else {
-                final String jsonSerializerName = jsonSerializer.getClass().getName();
-                if (settings.displaySerializerWarning) {
-                    System.out.println(String.format("Warning: Unknown serializer '%s' for class '%s'", jsonSerializerName, beanClass));
-                }
-                return null;
-            }
-        } catch (JsonMappingException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static class BeanHelper extends BeanSerializer {
-        private static final long serialVersionUID = 1;
-
-        public BeanHelper(BeanSerializer src) {
-            super(src);
-        }
-
-        public BeanPropertyWriter[] getProperties() {
-            return _props;
-        }
+        
+        // setters return 'void'
+        if (!method.getReturnType().equals(Void.TYPE))
+            return null;
+        
+        // setters have a single argument
+        if (method.getParameterCount() != 1)
+            return null;
+        
+        // we have a winner
+        String propertyName = methodName.substring(2).toLowerCase();
+        Type propertyType = method.getParameterTypes()[0];
+        
+        return new PropertyModel(propertyName, propertyType, false, method, null, null, false);
     }
     
-    private static Type getGenericType(Member member) {
-        if (member instanceof Method) {
-            return ((Method) member).getGenericReturnType();
+    private PropertyModel parseGetterMethod(Class<?> clazz, Method method) {
+        String methodName = method.getName();
+        
+        // getters start with 'set'
+        if (methodName.equalsIgnoreCase("getClass") || (!methodName.startsWith("get") && !methodName.startsWith("is")))
+            return null;
+        
+        // getters dont return 'void'
+        if (method.getReturnType().equals(Void.TYPE))
+            return null;
+        
+        // getters have no arguments
+        if (method.getParameterCount() != 0)
+            return null;
+        
+        // we might have a winner
+        if (methodName.startsWith("is")) {
+            
+            // 'is' type getters always return a boolean
+            if (!method.getReturnType().equals(boolean.class))
+                return null;
+            
+            Type propertyType = method.getReturnType();
+            String propertyName = methodName.substring(2).toLowerCase();
+            
+            return new PropertyModel(propertyName, propertyType, false, method, null, null, true);
         }
-        if (member instanceof Field) {
-            return ((Field) member).getGenericType();
+        else if (methodName.startsWith("get")) {
+            
+            Type propertyType = method.getReturnType();
+            String propertyName = methodName.substring(3).toLowerCase();
+            
+            return new PropertyModel(propertyName, propertyType, false, method, null, null, true);            
         }
         return null;
-    }
-    
-    private static boolean isSupported(JsonTypeInfo jsonTypeInfo) {
-        return jsonTypeInfo != null &&
-                jsonTypeInfo.include() == JsonTypeInfo.As.PROPERTY &&
-                (jsonTypeInfo.use() == JsonTypeInfo.Id.NAME || jsonTypeInfo.use() == JsonTypeInfo.Id.CLASS);
-    }
-
-    private String getDiscriminantPropertyName(JsonTypeInfo jsonTypeInfo) {
-        return jsonTypeInfo.property().isEmpty()
-                ? jsonTypeInfo.use().getDefaultPropertyName()
-                : jsonTypeInfo.property();
-    }
-
-    private String getTypeName(final Class<?> cls) {
-        return cls.getName().substring(cls.getName().lastIndexOf(".") + 1);
-    }
-    
+    }    
 }
