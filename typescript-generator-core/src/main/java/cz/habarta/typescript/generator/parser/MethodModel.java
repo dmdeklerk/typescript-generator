@@ -41,5 +41,10 @@ public class MethodModel {
     public List<String> getComments() {
         return comments;
     }
+    
+    @Override
+    public String toString() {
+        return "MethodModel{" + "name=" + name + ", returnType=" + returnType + ", parameters=" + parameters + "}";
+    }    
 
 }
