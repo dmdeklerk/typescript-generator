@@ -16,7 +16,15 @@ import cz.habarta.typescript.generator.parser.NashornJavaParser;
 
 public class NashornJavaParserTest {
     
-    public static class MyDummyBean {
+    public static class MyDummyBeanSuper {
+        
+        public String methodInSuper(String namedArg1, int otherArg) {
+            return "";
+        }
+        
+    }
+    
+    public static class MyDummyBean extends MyDummyBeanSuper {
         
         private String privateStringProperty;
         private boolean privateBooleanProperty;
