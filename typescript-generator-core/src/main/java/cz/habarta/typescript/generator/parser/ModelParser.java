@@ -6,8 +6,6 @@ import cz.habarta.typescript.generator.compiler.EnumKind;
 import cz.habarta.typescript.generator.compiler.SymbolTable;
 import cz.habarta.typescript.generator.*;
 import java.lang.reflect.Member;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.*;
 
@@ -103,22 +101,8 @@ public abstract class ModelParser {
         }
         return new PropertyModel(name, type, optional, originalMember, pullProperties, null);
     }
-    
-    protected MethodModel processTypeAndParametersAndCreateMethod(String name, Type returnType, boolean optional, Class<?> usedInClass, Method originalMethod) {
-        List<Class<?>> classes = discoverClassesUsedInType(returnType);
-        for (Class<?> cls : classes) {
-            typeQueue.add(new SourceType<>(cls, usedInClass, name));
-        }
-        
-        List<MethodParameterModel> parameters = new ArrayList<>();        
-        for (Parameter parameter : originalMethod.getParameters()) {
-            parameters.add(new MethodParameterModel(parameter.getName(), parameter.getParameterizedType()));
-            typeQueue.add(new SourceType<>(parameter.getType(), usedInClass, name));
-        }
-        return new MethodModel(usedInClass, name, parameters, returnType, /* comments */null);
-    }    
 
-    private List<Class<?>> discoverClassesUsedInType(Type type) {
+    protected List<Class<?>> discoverClassesUsedInType(Type type) {
         final TypeProcessor.Result result = processType(type);
         return result != null ? result.getDiscoveredClasses() : Collections.<Class<?>>emptyList();
     }
