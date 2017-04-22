@@ -78,7 +78,7 @@ public class BeanModel extends DeclarationModel {
 
     @Override
     public String toString() {
-        return "BeanModel{" + "origin=" + getOrigin() + ", properties=" + properties + '}';
+        return "BeanModel{" + "origin=" + getOrigin() + ", properties=" + properties + ", methods=" + methods + '}';
     }
 
 }
