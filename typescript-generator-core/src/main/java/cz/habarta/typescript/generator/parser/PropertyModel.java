@@ -14,6 +14,7 @@ public class PropertyModel {
     private final Member originalMember;
     private final PullProperties pullProperties;
     private final List<String> comments;
+    private final boolean readonly;
 
     public static class PullProperties {
         public final String prefix;
@@ -26,12 +27,17 @@ public class PropertyModel {
     }
 
     public PropertyModel(String name, Type type, boolean optional, Member originalMember, PullProperties pullProperties, List<String> comments) {
+        this(name, type, optional, originalMember, pullProperties, comments, false);
+    }
+    
+    public PropertyModel(String name, Type type, boolean optional, Member originalMember, PullProperties pullProperties, List<String> comments, boolean readonly) {
         this.name = name;
         this.type = type;
         this.optional = optional;
         this.originalMember = originalMember;
         this.pullProperties = pullProperties;
         this.comments = comments;
+        this.readonly = readonly;
     }
 
     public String getName() {
@@ -45,6 +51,10 @@ public class PropertyModel {
     public boolean isOptional() {
         return optional;
     }
+    
+    public boolean isReadonly() {
+        return readonly;
+    }    
 
     public Member getOriginalMember() {
         return originalMember;
